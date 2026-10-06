@@ -1,3 +1,11 @@
+# 0.3.1
+
+- Replace native confirmation/token dialogs with in-page dialogs that work in iframe panels.
+- Persistent import progress/errors and explicit cancellation feedback.
+- Log API operations, UI import events, applied site counts and unit state changes without logging credentials or request bodies.
+- Preserve an existing room's stable entity ID when its verified controller/Unit ID/indoor address matches an imported room.
+- Regression checked in a cross-origin iframe without native modal permission.
+
 # 0.3.0
 
 - Explicit read-only monitoring setup and no-payload transport tests from the add-on host.

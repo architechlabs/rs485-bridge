@@ -16,6 +16,8 @@ def test_site_import_preserves_mqtt_and_unknown_rooms_never_transmit(tmp_path):
         runtime=Runtime(tmp_path)
         runtime.config.mqtt=MQTT(enabled=False,host='existing-broker',username='existing-user',password='keep-private')
         runtime.config.instance_id='existing_site'
+        runtime.config.gateways=[Gateway(id='existing_gateway',name='Existing',host='192.168.29.136')]
+        runtime.config.units=[Unit(id='unit_1',name='Office',gateway='existing_gateway',address=7,profile='lg-ac-smart5')]
         bundle=SiteBundle.model_validate_json((Path(__file__).parents[1]/'sites/sherry-singh-site.json').read_text(encoding='utf-8'))
         try:
             result=await runtime.import_bundle(bundle)
@@ -25,6 +27,7 @@ def test_site_import_preserves_mqtt_and_unknown_rooms_never_transmit(tmp_path):
             assert not runtime.config.tx_enabled and not runtime.config.allow_writes
             assert len(discovery_records(runtime.config,runtime.profiles))==96
             assert sum(u.address is None for u in runtime.config.units)==11
+            assert next(u for u in runtime.config.units if u.address==7).id=='unit_1'
             for unit in runtime.config.units:
                 if unit.address is None:
                     assert runtime.states[unit.id]['phase']=='unassigned'
@@ -180,3 +183,24 @@ def test_interrupted_import_recovery_restores_maps_and_locks(tmp_path):
         assert not recovered.config.tx_enabled and not recovered.config.allow_writes
         assert not recovered.import_journal.exists()
     finally: recovered.store.close()
+
+
+def test_import_ui_events_and_failure_logs_do_not_leak_credentials(tmp_path,caplog):
+    async def run():
+        import logging
+        runtime=Runtime(tmp_path)
+        client=TestClient(TestServer(create_app(runtime,'test-token')))
+        await client.start_server()
+        headers={'Authorization':'Bearer test-token','X-Bridge-Request':'1'}
+        try:
+            with caplog.at_level(logging.INFO):
+                response=await client.post('/api/ui-events',headers=headers,json={'event':'import_file_selected'})
+                assert response.status==200
+                data=await (await client.get('/api/config',headers=headers)).json()
+                response=await client.post('/api/import',headers=headers,json={'revision':data['revision'],
+                    'bundle':{'configuration':{'mqtt':{'password':'must-never-appear-in-logs'},'unknown':'invalid'}}})
+                assert response.status==400
+            assert 'import_file_selected' in caplog.text and 'API validation failed: /api/import' in caplog.text
+            assert 'must-never-appear-in-logs' not in caplog.text
+        finally: await client.close()
+    asyncio.run(run())

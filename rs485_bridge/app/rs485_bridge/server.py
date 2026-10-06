@@ -60,20 +60,28 @@ def create_app(runtime: Runtime, token: str, ingress=False):
                 if not ingress and urlsplit(origin).netloc != request.host:
                     return web.json_response({"error":"cross-origin request rejected"}, status=403)
         try:
+            if request.method not in ('GET','HEAD','OPTIONS'):
+                LOG.info('API operation started: %s %s',request.method,request.path)
             result = await handler(request)
+            if request.method not in ('GET','HEAD','OPTIONS'):
+                LOG.info('API operation completed: %s %s status=%s',request.method,request.path,result.status)
             result.headers["X-Content-Type-Options"] = "nosniff"
             result.headers["Referrer-Policy"] = "same-origin"
             result.headers["Cache-Control"] = "no-store" if request.path.startswith("/api/") else "no-cache"
             return result
         except PermissionError as exc:
+            LOG.warning('API operation blocked: %s',request.path)
             return web.json_response({"error":str(exc)}, status=403)
         except asyncio.QueueFull:
             return web.json_response({"error":"Command queue is full. Wait for existing operations."}, status=429)
         except (ValueError, KeyError, TypeError) as exc:
+            LOG.warning('API validation failed: %s (%s)',request.path,type(exc).__name__)
             return web.json_response({"error":str(exc)}, status=400)
         except TimeoutError:
+            LOG.warning('API operation timed out: %s',request.path)
             return web.json_response({"error":"Command timed out. Check capture/audit before repeating a write."}, status=504)
         except OSError as exc:
+            LOG.warning('API storage/transport operation failed: %s (%s)',request.path,type(exc).__name__)
             return web.json_response({"error":str(exc)}, status=502)
 
     app = web.Application(middlewares=[access], client_max_size=MAX_UPLOAD)
@@ -136,11 +144,20 @@ def create_app(runtime: Runtime, token: str, ingress=False):
             bundle=SiteBundle.model_validate(body['bundle'])
             return web.json_response(await runtime.import_bundle(bundle,
                 preserve_mqtt=body.get('preserve_mqtt',True) is not False,
-                preserve_instance_id=body.get('preserve_instance_id',True) is not False))
+                preserve_instance_id=body.get('preserve_instance_id',True) is not False,
+                preserve_unit_ids=body.get('preserve_unit_ids',True) is not False))
 
     async def site_presets(request):
         folder=Path(__file__).parents[2]/'sites'
         return web.json_response([json.loads(path.read_text(encoding='utf-8')) for path in sorted(folder.glob('*.json'))])
+
+    async def ui_event(request):
+        event=(await request.json()).get('event')
+        if event not in ('import_file_selected','import_cancelled','import_failed'):
+            raise ValueError('unsupported UI event')
+        LOG.info('Studio UI event: %s',event)
+        runtime.store.audit('ui_event',{'event':event})
+        return web.json_response({'recorded':True})
 
     async def start_monitoring(request):
         async with mutation_lock:
@@ -233,6 +250,7 @@ def create_app(runtime: Runtime, token: str, ingress=False):
     app.router.add_get("/api/serial", serial_devices)
     app.router.add_post("/api/command", command)
     app.router.add_post("/api/import", site_import)
+    app.router.add_post("/api/ui-events", ui_event)
     app.router.add_get("/api/sites", site_presets)
     app.router.add_post("/api/monitor", start_monitoring)
     app.router.add_post("/api/gateway/{action:poll|reconnect|test}", action)

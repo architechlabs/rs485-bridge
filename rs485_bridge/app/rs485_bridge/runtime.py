@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import re
+from collections import Counter
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -123,7 +124,7 @@ class Runtime:
         if self.mqtt:
             self.mqtt.publish(unit_id,self.states[unit_id])
 
-    async def import_bundle(self, bundle, preserve_mqtt=True, preserve_instance_id=True):
+    async def import_bundle(self, bundle, preserve_mqtt=True, preserve_instance_id=True, preserve_unit_ids=True):
         async with self.configure_lock:
             profiles={**self.profiles, **{p.id:p for p in bundle.profiles}}
             config=(bundle.configuration or self.config).model_copy(deep=True)
@@ -131,6 +132,18 @@ class Runtime:
                 config.mqtt=self.config.mqtt.model_copy(deep=True)
             if preserve_instance_id:
                 config.instance_id=self.config.instance_id
+            if preserve_unit_ids:
+                def endpoint(gateway):
+                    return (gateway.transport,gateway.host.strip().lower(),gateway.port) if gateway.transport=='tcp' else (gateway.transport,gateway.serial_port.strip())
+                old_gateways={g.id:g for g in self.config.gateways}
+                new_gateways={g.id:g for g in config.gateways}
+                old_counts=Counter((endpoint(old_gateways[u.gateway]),u.slave_id,u.address) for u in self.config.units if u.address is not None)
+                new_counts=Counter((endpoint(new_gateways[u.gateway]),u.slave_id,u.address) for u in config.units if u.address is not None)
+                identities={(endpoint(old_gateways[u.gateway]),u.slave_id,u.address):u.id for u in self.config.units if u.address is not None and old_counts[(endpoint(old_gateways[u.gateway]),u.slave_id,u.address)]==1}
+                for unit in config.units:
+                    if unit.address is not None and new_counts[(endpoint(new_gateways[unit.gateway]),unit.slave_id,unit.address)]==1:
+                        unit.id=identities.get((endpoint(new_gateways[unit.gateway]),unit.slave_id,unit.address),unit.id)
+                config=BridgeConfig.model_validate(config.model_dump())
             config.tx_enabled=False
             config.allow_writes=False
             for unit in config.units:
@@ -184,6 +197,7 @@ class Runtime:
             self.profiles=profiles
             self.config=config
             self.store.audit('site_imported',{'name':bundle.name,'units':len(config.units),'pending_addresses':sum(u.address is None for u in config.units)})
+            LOG.info('Site import applied: units=%s pending_addresses=%s MQTT_preserved=%s TX_locked=true',len(config.units),sum(u.address is None for u in config.units),preserve_mqtt)
             await self.start()
             return {'imported':True,'units':len(config.units),'pending_addresses':sum(u.address is None for u in config.units),
                 'tx_enabled':False,'allow_writes':False,'mqtt_preserved':preserve_mqtt}
@@ -317,6 +331,7 @@ class GatewayWorker:
         state = self.runtime.states[unit.id]
         if unit.address is None:
             return
+        previous_phase=state.get('phase')
         errors={}
         cycle_availability={p.id:False for p in profile.points}
         try:
@@ -360,6 +375,8 @@ class GatewayWorker:
             self.status, self.error = "retrying", str(exc)
             self.wire.close()
         self.runtime.publish_unit(unit.id)
+        if state.get('phase')!=previous_phase:
+            LOG.info('Unit read state changed: unit=%s slave=%s address=%s phase=%s',unit.id,unit.slave_id,unit.address,state.get('phase'))
 
     async def _passive(self):
         try:

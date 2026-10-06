@@ -16,6 +16,12 @@ On the MQTT page the UI shows whether discovery is connected. If broker discover
 
 ## Connections
 
+### Import and confirmation feedback (0.3.1)
+
+The studio uses its own **Review action → Confirm / Cancel** dialog. It does not depend on browser `confirm()` or `prompt()`, which can be suppressed in iframe wrappers. Import selection, progress, completion, cancellation and failures appear in a persistent message above the page contents. The add-on logs record UI import events and API operations without recording credentials/file contents.
+
+Site imports preserve existing unit IDs when a unique known controller/Unit ID/indoor address matches the imported room. This keeps existing OFFICE entity IDs when its original stable unit ID was `unit_1` rather than `office`.
+
 ### Read-only setup and site imports (0.3.0)
 
 MQTT entity creation does not mean the controller has been read. **TX locked** blocks polls and manual reads. Use Connections → **Test connection** to measure transport reachability from the add-on host without a Modbus payload. Then **Start read-only monitoring** and confirm; this enables polling/TX and disables global HVAC writes.
