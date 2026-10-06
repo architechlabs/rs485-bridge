@@ -1,0 +1,22 @@
+name: RS485 Control Studio
+version: "0.2.0"
+slug: rs485_bridge
+description: Modbus USB/IP HVAC bridge with a setup studio, raw captures and native MQTT entities
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: auto
+init: false
+timeout: 60
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:air-conditioner
+uart: true
+udev: true
+hassio_api: true
+hassio_role: default
+services:
+  - mqtt:want
+options: {}
+schema: {}

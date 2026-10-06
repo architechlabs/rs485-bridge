@@ -1,0 +1,9 @@
+{
+  "schema_version":1,"id":"generic-example","version":"1.0.0",
+  "name":"Generic mapping example — replace with your documentation",
+  "manufacturer":"Custom","model":"Documented Modbus device",
+  "source":"Example only; not an HVAC register map",
+  "notes":"Not verified for real equipment. Upload a profile built from your manufacturer's documentation.",
+  "base_address":0,"address_stride":1,
+  "points":[{"id":"register_value","name":"Register value","entity":"sensor","offset":0,"read_function":3}]
+}
