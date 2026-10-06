@@ -5,6 +5,7 @@
 - Log API operations, UI import events, applied site counts and unit state changes without logging credentials or request bodies.
 - Preserve an existing room's stable entity ID when its verified controller/Unit ID/indoor address matches an imported room.
 - Regression checked in a cross-origin iframe without native modal permission.
+- Version static assets and reload on backend version changes; null/missing room addresses cannot crash the unit list.
 
 # 0.3.0
 

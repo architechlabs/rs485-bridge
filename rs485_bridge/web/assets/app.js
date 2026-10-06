@@ -1,4 +1,5 @@
 'use strict';
+const CLIENT_VERSION='0.3.1';
 let config, revision, profiles=[], status={units:{},gateways:{}}, page='overview', modalSubmit;
 const $=s=>document.querySelector(s);
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -12,7 +13,7 @@ async function api(path,body,method='POST'){
  return response.json();
 }
 function toast(text){const feedback=document.getElementById('operation-feedback');if(feedback){feedback.hidden=false;feedback.textContent=text;}$('#toast').textContent=text;$('#toast').style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').style.display='none',7000)}
-async function refresh(full=false){try{if(full||!config){const c=await api('config');config=c.configuration;revision=c.revision;profiles=await api('profiles');}status=await api('status');$('#lock-badge').textContent=status.tx_enabled?'TX ENABLED':'TX LOCKED';$('#lock-badge').className='badge '+(status.tx_enabled?'online':'');$('#broker-label').textContent=status.mqtt_connected?'Home Assistant · connected':'MQTT disconnected';$('#broker-dot').className='status-dot '+(status.mqtt_connected?'online':'');if(full||['overview','units','connections','traffic'].includes(page))await render();}catch(e){toast(e.message)}}
+async function refresh(full=false){try{if(full||!config){const c=await api('config');config=c.configuration;revision=c.revision;profiles=await api('profiles');}status=await api('status');if(status.version&&status.version!==CLIENT_VERSION){if(sessionStorage.getItem('rs485-reloaded-version')!==status.version){sessionStorage.setItem('rs485-reloaded-version',status.version);location.reload();return;}toast('Add-on updated. Reload this page to load its matching interface.');return;}$('#lock-badge').textContent=status.tx_enabled?'TX ENABLED':'TX LOCKED';$('#lock-badge').className='badge '+(status.tx_enabled?'online':'');$('#broker-label').textContent=status.mqtt_connected?'Home Assistant · connected':'MQTT disconnected';$('#broker-dot').className='status-dot '+(status.mqtt_connected?'online':'');if(full||['overview','units','connections','traffic'].includes(page))await render();}catch(e){toast(e.message)}}
 async function save(next){if(next.tx_enabled||next.allow_writes||next.units.some(u=>u.control_enabled)){if(!await uiConfirm('Review transmission policy: enabled polling sends Modbus requests; enabled unit controls allow HVAC writes from this UI and Home Assistant automations. Apply these settings?'))return false;}
  await api('config',{configuration:next,revision,confirmation:'ENABLE_TRANSMISSION'});await refresh(true);toast('Settings saved. Connections and entity discovery updated.');return true;}
 function profileFor(unit){return profiles.find(p=>p.id===unit.profile)}
