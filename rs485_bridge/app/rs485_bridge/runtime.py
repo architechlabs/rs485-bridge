@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import re
+import uuid
 from collections import Counter
 import time
 from datetime import datetime, timezone
@@ -96,6 +97,7 @@ class Runtime:
     async def stop(self):
         for worker in self.workers.values():
             worker.stopping = True
+            worker.wakeup.set()
         await asyncio.gather(*(w.task for w in self.workers.values()), return_exceptions=True)
         self.workers.clear()
         if self.mqtt:
@@ -208,7 +210,26 @@ class Runtime:
             raise ValueError('gateway not found')
         future=asyncio.get_running_loop().create_future()
         worker.diagnostics.put_nowait(future)
+        worker.wakeup.set()
         return await asyncio.wait_for(future, timeout=45)
+
+    async def benchmark(self, gateway_id):
+        worker=self.workers.get(gateway_id)
+        if not worker or worker.gateway.transport!='tcp':
+            raise ValueError('Select a TCP gateway for the read-only benchmark')
+        if not self.config.tx_enabled or worker.gateway.passive:
+            raise PermissionError('TX is locked; the benchmark sends four read requests')
+        unit=next((u for u in self.config.units if u.enabled and u.gateway==gateway_id and u.address is not None),None)
+        if not unit:
+            raise ValueError('No assigned unit on this gateway')
+        points=self.profiles[unit.profile].points
+        point=next((p for p in points if p.role=='target'),None) or next((p for p in points if p.entity=='sensor' and p.read_function in (3,4)),None)
+        if point is None:
+            raise ValueError('No suitable documented read point for a benchmark')
+        future=asyncio.get_running_loop().create_future()
+        worker.measurements.put_nowait((unit,point,future))
+        worker.wakeup.set()
+        return await asyncio.wait_for(future,timeout=45)
 
     async def command(self, unit_id, point_id, value, source="api"):
         unit = next((u for u in self.config.units if u.id == unit_id and u.enabled), None)
@@ -242,7 +263,12 @@ class Runtime:
             point.encode(requested)
         future = asyncio.get_running_loop().create_future()
         worker = self.workers[unit.gateway]
-        worker.queue.put_nowait((unit, operations, source, time.monotonic() + 15, future))
+        metadata={'command_id':uuid.uuid4().hex,'command_status':'queued','point':point_id,'requested_value':value,
+            'source':source,'queued_at':datetime.now(timezone.utc).isoformat()}
+        worker.queue.put_nowait((unit, operations, source, time.monotonic() + 15, future,metadata))
+        self.states[unit.id]['last_command']=metadata
+        worker.wakeup.set()
+        self.publish_unit(unit.id)
         return await asyncio.wait_for(future, timeout=30)
 
     def snapshot(self):
@@ -258,7 +284,9 @@ class GatewayWorker:
         self.runtime, self.gateway = runtime, gateway
         self.wire = Wire(gateway, runtime.store)
         self.queue = asyncio.Queue(maxsize=100)
+        self.wakeup=asyncio.Event()
         self.diagnostics=asyncio.Queue(maxsize=1)
+        self.measurements=asyncio.Queue(maxsize=1)
         self.last_diagnostic=None
         self.stopping = False
         self.status, self.error = "idle", ""
@@ -286,8 +314,11 @@ class GatewayWorker:
     async def _next_command(self):
         if self.queue.empty():
             return
-        unit, operations, source, expires, future = self.queue.get_nowait()
+        unit, operations, source, expires, future,metadata = self.queue.get_nowait()
         if future.cancelled() or expires < time.monotonic() or self.stopping:
+            metadata['command_status']='cancelled' if future.cancelled() or self.stopping else 'expired'
+            if self.runtime.states[unit.id].get('last_command',{}).get('command_id')==metadata['command_id']:
+                self.runtime.publish_unit(unit.id)
             if not future.done():
                 future.set_exception(TimeoutError("command expired before transmission"))
             return
@@ -296,35 +327,82 @@ class GatewayWorker:
             if not cfg.tx_enabled or not cfg.allow_writes or not unit.control_enabled or self.gateway.passive:
                 raise PermissionError("TX locked before command execution")
             results = []
+            started=time.monotonic()
+            metadata.update(command_status='applying',queue_wait_ms=round((started-(expires-15))*1000,1))
+            self.runtime.states[unit.id]['last_command']=metadata
+            self.runtime.publish_unit(unit.id)
             profile = self.runtime.profiles[unit.profile]
             for point, value in operations:
                 address = profile.base_address + unit.address * profile.address_stride + point.offset
                 raw = point.encode(value)
                 self.runtime.store.audit("write_requested", {"unit":unit.id, "point":point.id, "address":address, "raw_value":raw, "source":source})
-                await asyncio.to_thread(self.wire.exchange, unit, point.write_function, address, raw, source)
+                await asyncio.to_thread(self.wire.exchange, unit, point.write_function, address, raw, source,metadata['command_id'])
+                metadata['command_status']='verifying'
+                self.runtime.publish_unit(unit.id)
                 # Readback is its own read-only transaction, never a write retry.
                 verified, readback = False, None
                 try:
-                    values = await asyncio.to_thread(self.wire.exchange, unit, point.read_function, address, 1, "write_readback")
-                    readback = point.decode(values[0])
                     expected = point.decode(1 if point.write_function == 5 and raw else raw)
-                    verified = readback == expected
-                    self.runtime.states[unit.id]["values"][point.id] = readback
-                    self.runtime.states[unit.id]['point_availability'][point.id]=True
+                    for attempt in range(self.gateway.readback_attempts):
+                        if attempt:
+                            await asyncio.sleep(self.gateway.readback_delay)
+                        values = await asyncio.to_thread(self.wire.exchange, unit, point.read_function, address, 1, "write_readback",metadata['command_id'])
+                        readback = point.decode(values[0])
+                        verified = readback == expected
+                        self.runtime.states[unit.id]["values"][point.id] = readback
+                        self.runtime.states[unit.id]['point_availability'][point.id]=True
+                        if verified:
+                            break
                 except OSError as exc:
                     self.runtime.states[unit.id].update(available=False, error=f"Write acknowledged; readback failed: {exc}")
+                    self.runtime.states[unit.id]['point_availability'][point.id]=False
                 results.append({"point":point.id, "acknowledged":True, "state_verified":verified, "readback":readback})
                 self.runtime.store.audit("write_result", {"unit":unit.id, **results[-1]})
+                # Publish each confirmed point without waiting for the rest of
+                # a compound mode + power command.
+                self.runtime.publish_unit(unit.id)
+            metadata.update(command_status='verified' if all(r['state_verified'] for r in results) else 'unverified',
+                command_latency_ms=round((time.monotonic()-(expires-15))*1000,1),
+                execution_ms=round((time.monotonic()-started)*1000,1))
+            self.runtime.store.audit('command_completed',{'unit':unit.id,**metadata})
+            LOG.info('Command completed: unit=%s status=%s total_ms=%s queue_ms=%s',unit.id,metadata['command_status'],metadata['command_latency_ms'],metadata['queue_wait_ms'])
             self.runtime.publish_unit(unit.id)
             if not future.done():
-                future.set_result({"unit":unit.id, "results":results})
+                future.set_result({"unit":unit.id, "results":results,'metrics':metadata.copy()})
         except Exception as exc:
+            metadata.update(command_status='failed',command_latency_ms=round((time.monotonic()-(expires-15))*1000,1))
             self.runtime.states[unit.id].update(available=False, error=f"Command failed; readback required: {exc}")
             self.runtime.publish_unit(unit.id)
             self.runtime.store.audit("command_failed", {"unit":unit.id, "error":str(exc), "source":source,
                 "note":"No automatic write retry; execution may be uncertain after transport failure"})
             if not future.done():
                 future.set_exception(exc)
+
+    async def _benchmark(self):
+        if self.measurements.empty(): return
+        unit,point,future=self.measurements.get_nowait()
+        if future.cancelled(): return
+        if self.stopping:
+            future.set_exception(RuntimeError('service stopped'))
+            return
+        try:
+            if not self.runtime.config.tx_enabled:
+                raise PermissionError('TX locked before benchmark execution')
+            profile=self.runtime.profiles[unit.profile]
+            address=profile.base_address+unit.address*profile.address_stride+point.offset
+            samples=[]
+            for _ in range(4):
+                if self.stopping or future.cancelled(): break
+                await self._next_command()
+                started=time.monotonic()
+                values=await asyncio.to_thread(self.wire.exchange,unit,point.read_function,address,1,'timing_probe')
+                samples.append({'elapsed_ms':round((time.monotonic()-started)*1000,1),'value':point.decode(values[0])})
+            result={'unit':unit.id,'point':point.id,'writes_sent':0,'samples':samples,
+                'mean_ms':round(sum(s['elapsed_ms'] for s in samples)/len(samples),1) if samples else None}
+            self.runtime.store.audit('read_only_benchmark',result)
+            if not future.done(): future.set_result(result)
+        except Exception as error:
+            if not future.done(): future.set_exception(error)
 
     async def _poll_unit(self, unit):
         profile = self.runtime.profiles[unit.profile]
@@ -341,7 +419,10 @@ class GatewayWorker:
                 if self.stopping:
                     return
                 await self._diagnose()
-                await self._next_command()
+                for _ in range(4):
+                    if self.queue.empty(): break
+                    await self._next_command()
+                await self._benchmark()
                 address = profile.base_address + unit.address * profile.address_stride + point.offset
                 try:
                     values = await asyncio.to_thread(self.wire.exchange, unit, point.read_function, address, 1)
@@ -408,7 +489,10 @@ class GatewayWorker:
                     await self._passive()
                     await asyncio.sleep(0.01)
                     continue
-                await self._next_command()
+                for _ in range(4):
+                    if self.queue.empty(): break
+                    await self._next_command()
+                await self._benchmark()
                 if self.reconnect_requested:
                     self.wire.close()
                     self.reconnect_requested = False
@@ -425,17 +509,27 @@ class GatewayWorker:
                     next_poll = time.monotonic() + max(self.gateway.poll_interval, min(120, 2 ** failures))
                 elif not self.runtime.config.tx_enabled:
                     self.status = "TX locked"
-                await asyncio.sleep(0.1)
+                # Wake immediately for commands/diagnostics. The bounded idle
+                # timeout also supports callers that set force_poll directly.
+                if self.queue.empty() and self.diagnostics.empty() and self.measurements.empty():
+                    self.wakeup.clear()
+                    try:
+                        await asyncio.wait_for(self.wakeup.wait(),timeout=max(.01,min(.5,next_poll-time.monotonic())) if self.gateway.polling_enabled and self.runtime.config.tx_enabled else .5)
+                    except TimeoutError:
+                        pass
         finally:
             self.wire.close()
             pending = self.framer.flush()
             for raw, gap in pending:
                 self.runtime.store.event(self.gateway.id, None, "rx", raw, {"kind":"timing_frame", "note":"shutdown flush", "gap":gap})
             while not self.queue.empty():
-                _, _, _, _, future = self.queue.get_nowait()
+                _, _, _, _, future,_ = self.queue.get_nowait()
                 if not future.done():
                     future.set_exception(RuntimeError("configuration changed or service stopped"))
             while not self.diagnostics.empty():
                 future=self.diagnostics.get_nowait()
                 if not future.done():
                     future.set_exception(RuntimeError('service stopped'))
+            while not self.measurements.empty():
+                _,_,future=self.measurements.get_nowait()
+                if not future.done(): future.set_exception(RuntimeError('service stopped'))

@@ -111,7 +111,8 @@ def create_app(runtime: Runtime, token: str, ingress=False):
         enables_tx = updated.tx_enabled and not runtime.config.tx_enabled
         enables_writes = updated.allow_writes and not runtime.config.allow_writes
         old_units = {u.id:u for u in runtime.config.units}
-        enables_unit = any(u.control_enabled and (u.id not in old_units or not old_units[u.id].control_enabled) for u in updated.units)
+        enables_unit = any(u.control_enabled and (u.id not in old_units or not old_units[u.id].control_enabled or
+            any(getattr(u,key)!=getattr(old_units[u.id],key) for key in ('gateway','slave_id','address','profile'))) for u in updated.units)
         if (enables_tx or enables_writes or enables_unit) and body.get("confirmation") != "ENABLE_TRANSMISSION":
             raise PermissionError("Explicit ENABLE_TRANSMISSION confirmation is required to enable transmission or unit control")
         await runtime.configure(updated)
@@ -187,12 +188,15 @@ def create_app(runtime: Runtime, token: str, ingress=False):
             raise ValueError("gateway not found")
         if request.match_info['action']=='test':
             return web.json_response(await runtime.check_connection(worker.gateway.id))
+        if request.match_info['action']=='benchmark':
+            return web.json_response(await runtime.benchmark(worker.gateway.id))
         if request.match_info["action"] == "poll":
             if not runtime.config.tx_enabled or worker.gateway.passive:
                 raise PermissionError("TX locked or passive mode; reads also transmit requests")
             worker.force_poll = True
         else:
             worker.reconnect_requested = True
+        worker.wakeup.set()
         return web.json_response({"queued":True})
 
     async def events(request):
@@ -253,7 +257,7 @@ def create_app(runtime: Runtime, token: str, ingress=False):
     app.router.add_post("/api/ui-events", ui_event)
     app.router.add_get("/api/sites", site_presets)
     app.router.add_post("/api/monitor", start_monitoring)
-    app.router.add_post("/api/gateway/{action:poll|reconnect|test}", action)
+    app.router.add_post("/api/gateway/{action:poll|reconnect|test|benchmark}", action)
     app.router.add_get("/api/events", events)
     app.router.add_get("/api/export", export)
     app.router.add_get("/api/bundle", bundle)

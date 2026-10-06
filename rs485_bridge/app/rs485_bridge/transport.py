@@ -40,14 +40,14 @@ class Wire:
             if self.gateway.transport == "tcp":
                 self.close()
 
-    def exchange(self, unit, function, address, value, source="poll"):
+    def exchange(self, unit, function, address, value, source="poll", command_id=None):
         is_write = function in (5, 6)
         # A read may be retried once on a fresh connection. Writes are never
         # retried when an acknowledgement was lost.
         attempts = 1 if is_write else 2
         for attempt in range(attempts):
             try:
-                return self._once(unit, function, address, value, source)
+                return self._once(unit, function, address, value, source, command_id)
             except ModbusError:
                 self.close()
                 raise
@@ -56,17 +56,22 @@ class Wire:
                 if attempt + 1 == attempts:
                     raise
 
-    def _once(self, unit, function, address, value, source):
+    def _once(self, unit, function, address, value, source, command_id=None):
         gateway = self.gateway
-        time.sleep(max(0, gateway.request_delay - (time.monotonic() - self.last_tx)))
+        command_path=function in (5,6) or source in ('write_readback','timing_probe')
+        spacing=gateway.command_delay if command_path and gateway.command_delay is not None else gateway.request_delay
+        settling=gateway.command_connect_delay if command_path and gateway.command_connect_delay is not None else gateway.connect_delay
+        time.sleep(max(0, spacing - (time.monotonic() - self.last_tx)))
         rtu = build_request(unit.slave_id, function, address, value)
         if not self.client.is_open:
             self.client.open()
-            if gateway.transport == "tcp" and gateway.connect_delay:
-                time.sleep(gateway.connect_delay)
+            if gateway.transport == "tcp" and settling:
+                time.sleep(settling)
         request = self.client.prepare(rtu[1:-2], unit.slave_id) if gateway.transport == "tcp" else rtu
         context = {"transport": gateway.transport, "settings": gateway.model_dump(), "source": source,
                    "slave_id": unit.slave_id, "function": function, "address": address, "value_or_count": value}
+        if command_id is not None:
+            context['command_id']=command_id
         request_id = self.store.event(gateway.id, unit.id, "tx", request, context)
         started = time.monotonic()
         self.last_tx = started

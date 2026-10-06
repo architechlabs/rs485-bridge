@@ -127,6 +127,10 @@ class Gateway(StrictModel):
     polling_enabled: bool = False
     fresh_connection: bool = True
     connect_delay: float = Field(default=0.1, ge=0, le=5)
+    command_delay: float | None = Field(default=None, ge=0.05, le=10)
+    command_connect_delay: float | None = Field(default=None, ge=0, le=5)
+    readback_attempts: int = Field(default=1, ge=1, le=3)
+    readback_delay: float = Field(default=0.08, ge=0.05, le=1)
     passive: bool = False
 
     @model_validator(mode="after")

@@ -1,5 +1,5 @@
 name: RS485 Control Studio
-version: "0.3.1"
+version: "0.3.2"
 slug: rs485_bridge
 description: Modbus USB/IP HVAC bridge with a setup studio, raw captures and native MQTT entities
 arch:

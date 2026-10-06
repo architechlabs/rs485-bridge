@@ -1,5 +1,5 @@
 FROM python:3.13-slim-bookworm
-ARG BUILD_VERSION=0.3.1
+ARG BUILD_VERSION=0.3.2
 ARG BUILD_ARCH=amd64
 LABEL io.hass.version=$BUILD_VERSION io.hass.type="app" io.hass.arch=$BUILD_ARCH
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/opt/bridge/app:/opt/bridge/engine

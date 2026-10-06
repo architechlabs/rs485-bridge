@@ -16,6 +16,16 @@ On the MQTT page the UI shows whether discovery is connected. If broker discover
 
 ## Connections
 
+### Responsive controls (0.3.2)
+
+Normal polling and interactive control have separate pacing. Blank control delay fields inherit the conservative polling delays. **Faster TCP controls** configures an 80 ms minimum control request gap, 20 ms connection settling time and up to three readbacks if the returned value differs. The preset preserves polling intervals, fresh connections and existing write permissions. It is TCP-only; tune against the actual controller before applying it elsewhere.
+
+**Measure read latency** sends four reads of an assigned unit's documented setpoint (or suitable sensor), using the command pacing. It never initiates an HVAC write. Its measurements include spacing, connection, capture and response time; they are not a measured dashboard-to-physical-actuation delay.
+
+Commands wake the serialized worker immediately, run ahead of background reads between transactions and publish each actual readback without waiting for the remaining compound operations. An in-flight transaction cannot be interrupted safely. Writes are never automatically repeated. Extra verification attempts repeat only reads after a mismatched value; transport read failures retain the existing bounded retry policy.
+
+The studio shows applying/verifying/verified status and bridge latency. `climate` entities receive `command_status`, `queue_wait_ms`, `execution_ms` and `command_latency_ms` attributes through MQTT's JSON attributes topic. Values remain based on readback, not optimistic guesses. Unchanged state/availability payloads are suppressed and republished after broker reconnect or HA birth. UI refresh reads cached state once per second; it does not increase Modbus polling.
+
 ### Import and confirmation feedback (0.3.1)
 
 The studio uses its own **Review action → Confirm / Cancel** dialog. It does not depend on browser `confirm()` or `prompt()`, which can be suppressed in iframe wrappers. Import selection, progress, completion, cancellation and failures appear in a persistent message above the page contents. The add-on logs record UI import events and API operations without recording credentials/file contents.

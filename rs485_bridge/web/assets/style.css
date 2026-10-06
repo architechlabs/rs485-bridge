@@ -3,3 +3,4 @@
 .row-actions{flex-wrap:wrap} .card-meta{overflow-wrap:anywhere}
 .point-details{font-size:11px;margin-top:18px;border-top:1px solid var(--line);padding-top:12px}.point-details summary{cursor:pointer;color:var(--accent)}.point-row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:12px 0;border-bottom:1px solid var(--line)}.point-row small{display:block;color:var(--muted);margin-top:4px;font-size:9px}.point-row .error-text,.point-row .controls{width:100%;margin:0}.card-bottom{flex-wrap:wrap}
 .decision-message{font-size:13px;line-height:1.8;white-space:pre-wrap;color:var(--ink)}#decision-token{width:100%;padding:12px;border:1px solid var(--line);border-radius:8px}#operation-feedback{overflow-wrap:anywhere}
+.command-feedback{background:var(--accent-soft);color:var(--accent);font-size:11px;border-radius:7px;padding:9px 11px;margin-bottom:12px;text-transform:capitalize}

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import threading
 from pathlib import Path
 import paho.mqtt.client as mqtt
 from .schema import atomic_json
@@ -61,6 +62,7 @@ def discovery_records(config, profiles):
                 "temperature_state_template":"{{ value_json." + target.id + " }}",
                 "current_temperature_topic":f"{base}/state",
                 "current_temperature_template":"{{ value_json." + current.id + " }}",
+                "json_attributes_topic":f"{base}/command_state",
                 "min_temp":target.minimum, "max_temp":target.maximum, "temp_step":target.step,
                 "retain":False}
             if "fan" in roles:
@@ -75,6 +77,8 @@ class MQTTBridge:
         self.runtime = runtime
         self.client = None
         self.connected = False
+        self.publish_cache={}
+        self.cache_lock=threading.RLock()
         self.loop = asyncio.get_running_loop()
         self.registry = runtime.data_dir / "discovery-topics.json"
 
@@ -103,6 +107,8 @@ class MQTTBridge:
             LOG.warning("MQTT connection rejected: %s", reason_code)
             return
         self.connected = True
+        with self.cache_lock:
+            self.publish_cache.clear()
         cfg = self.runtime.config
         prefix = f"{cfg.mqtt.topic_prefix}/{cfg.instance_id}"
         client.subscribe(f"{prefix}/+/command/+", qos=1)
@@ -116,6 +122,8 @@ class MQTTBridge:
 
     def _message(self, client, userdata, message):
         if message.topic == "homeassistant/status" and message.payload == b"online":
+            with self.cache_lock:
+                self.publish_cache.clear()
             self.publish_discovery()
             self.loop.call_soon_threadsafe(self.runtime.publish_all)
             return
@@ -154,18 +162,30 @@ class MQTTBridge:
             self.client.publish(topic, json.dumps(body, ensure_ascii=False), qos=1, retain=True)
         atomic_json(self.registry, list(records))
 
+    def _changed(self, topic, payload):
+        with self.cache_lock:
+            if self.publish_cache.get(topic)==payload:
+                return
+            result=self.client.publish(topic,payload,qos=1,retain=True)
+            if result.rc==mqtt.MQTT_ERR_SUCCESS:
+                self.publish_cache[topic]=payload
+
     def publish(self, unit_id, state):
         if not self.client or not self.connected:
             return
         base = f"{self.runtime.config.mqtt.topic_prefix}/{self.runtime.config.instance_id}/{unit_id}"
-        self.client.publish(f"{base}/availability", "online" if state.get("available") else "offline", qos=1, retain=True)
+        # Put actual values first; don't resend unchanged availability packets
+        # ahead of each control response.
+        if state.get("values"):
+            self._changed(f"{base}/state",json.dumps(state['values'],ensure_ascii=False,sort_keys=True))
+        self._changed(f"{base}/availability", "online" if state.get("available") else "offline")
         unit=next((u for u in self.runtime.config.units if u.id==unit_id),None)
         if unit:
             for point in self.runtime.profiles[unit.profile].points:
                 available=state.get('point_availability',{}).get(point.id,False)
-                self.client.publish(f'{base}/point/{point.id}/availability','online' if available else 'offline',qos=1,retain=True)
-        if state.get("values"):
-            self.client.publish(f"{base}/state", json.dumps(state["values"], ensure_ascii=False), qos=1, retain=True)
+                self._changed(f'{base}/point/{point.id}/availability','online' if available else 'offline')
+        command=state.get('last_command') or {'command_status':'idle','command_latency_ms':None,'queue_wait_ms':None,'command_id':None,'point':None,'requested_value':None}
+        self._changed(f'{base}/command_state',json.dumps(command,ensure_ascii=False,sort_keys=True))
 
     def stop(self):
         if self.client:
