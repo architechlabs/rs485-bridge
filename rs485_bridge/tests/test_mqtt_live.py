@@ -66,6 +66,14 @@ def test_real_broker_discovery_command_and_birth(tmp_path):
             before = sum(t.endswith('/config') for t, _ in messages)
             observer.publish('homeassistant/status', 'online', qos=1)
             await until(lambda: sum(t.endswith('/config') for t, _ in messages) >= before + 8)
+            requests_before=len(mock.requests)
+            await runtime.import_profile(runtime.profiles['lg-ac-smart5'])
+            assert runtime.config.mqtt.enabled and runtime.config.mqtt.port==port
+            assert not runtime.config.tx_enabled and not runtime.config.allow_writes
+            await until(lambda: runtime.mqtt.connected)
+            runtime.workers['lg'].force_poll=True
+            await asyncio.sleep(.25)
+            assert len(mock.requests)==requests_before
             await runtime.stop()
             await until(lambda: ('rs485_bridge/site/availability', b'offline') in messages)
         finally:

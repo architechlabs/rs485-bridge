@@ -126,6 +126,7 @@ class Gateway(StrictModel):
     poll_interval: float = Field(default=15, ge=5, le=3600)
     polling_enabled: bool = False
     fresh_connection: bool = True
+    connect_delay: float = Field(default=0.1, ge=0, le=5)
     passive: bool = False
 
     @model_validator(mode="after")
@@ -143,10 +144,18 @@ class Unit(StrictModel):
     name: str = Field(min_length=1, max_length=80)
     gateway: str
     slave_id: int = Field(default=10, ge=1, le=247)
-    address: int = Field(default=0, ge=0, le=255)
+    address: int | None = Field(default=0, ge=0, le=255)
+    group: str = Field(default="", max_length=80)
+    notes: str = Field(default="", max_length=1000)
     profile: str
     control_enabled: bool = False
     enabled: bool = True
+
+    @model_validator(mode="after")
+    def assigned_control(self):
+        if self.address is None and self.control_enabled:
+            raise ValueError("assign a verified indoor address before enabling control")
+        return self
 
 class MQTT(StrictModel):
     enabled: bool = False
@@ -182,17 +191,33 @@ class BridgeConfig(StrictModel):
             raise ValueError("one gateway must own each TCP endpoint or serial port; add units to that gateway")
         if any(u.gateway not in {g.id for g in self.gateways} for u in self.units):
             raise ValueError("unit refers to an unknown gateway")
-        identities = [(u.gateway, u.slave_id, u.address, u.profile) for u in self.units]
+        identities = [(u.gateway, u.slave_id, u.address, u.profile) for u in self.units if u.address is not None]
         if len(set(identities)) != len(identities):
             raise ValueError("duplicate equipment mapping; rename the existing unit instead")
         return self
+
+class SiteBundle(StrictModel):
+    schema_version: Literal[1] = 1
+    name: str = Field(default="Imported site", max_length=100)
+    notes: str = Field(default="", max_length=4000)
+    configuration: BridgeConfig | None = None
+    profiles: list[Profile] = Field(default_factory=list, max_length=256)
+
+    @model_validator(mode="after")
+    def unique_profiles(self):
+        if len({p.id for p in self.profiles})!=len(self.profiles):
+            raise ValueError("duplicate imported profile IDs")
+        if self.configuration is None and not self.profiles:
+            raise ValueError("import requires profiles or a site configuration")
+        return self
+
 
 def validate_links(config: BridgeConfig, profiles: dict[str, Profile]):
     for unit in config.units:
         if unit.profile not in profiles:
             raise ValueError(f"profile {unit.profile} is not installed")
         profile = profiles[unit.profile]
-        if any(profile.base_address + unit.address * profile.address_stride + p.offset > 65535 for p in profile.points):
+        if unit.address is not None and any(profile.base_address + unit.address * profile.address_stride + p.offset > 65535 for p in profile.points):
             raise ValueError("computed protocol address exceeds 65535")
 
 def atomic_json(path: Path, data):

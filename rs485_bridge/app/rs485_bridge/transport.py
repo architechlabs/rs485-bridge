@@ -24,6 +24,22 @@ class Wire:
     def close(self):
         self.client.close()
 
+    def check_connection(self):
+        """Transport reachability only. Never sends a Modbus/serial payload."""
+        started = time.monotonic()
+        try:
+            if not self.client.is_open:
+                self.client.open()
+            result = {"reachable":True, "transport":self.gateway.transport,
+                "elapsed_seconds":round(time.monotonic()-started, 4), "modbus_bytes_sent":0,
+                "note":"Transport opened; this does not verify Unit ID or register mappings."}
+            if self.gateway.transport == "tcp":
+                result.update(local_address=self.client.sock.getsockname(), peer=self.client.sock.getpeername())
+            return result
+        finally:
+            if self.gateway.transport == "tcp":
+                self.close()
+
     def exchange(self, unit, function, address, value, source="poll"):
         is_write = function in (5, 6)
         # A read may be retried once on a fresh connection. Writes are never
@@ -46,6 +62,8 @@ class Wire:
         rtu = build_request(unit.slave_id, function, address, value)
         if not self.client.is_open:
             self.client.open()
+            if gateway.transport == "tcp" and gateway.connect_delay:
+                time.sleep(gateway.connect_delay)
         request = self.client.prepare(rtu[1:-2], unit.slave_id) if gateway.transport == "tcp" else rtu
         context = {"transport": gateway.transport, "settings": gateway.model_dump(), "source": source,
                    "slave_id": unit.slave_id, "function": function, "address": address, "value_or_count": value}
@@ -59,8 +77,13 @@ class Wire:
                 client.sock.sendall(request)
                 received = bytearray()
                 wanted = 6
+                deadline = time.monotonic() + gateway.timeout
                 try:
                     while len(received) < wanted:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise TimeoutError("Modbus response deadline exceeded")
+                        client.sock.settimeout(remaining)
                         chunk = client.sock.recv(wanted - len(received))
                         if not chunk:
                             raise ConnectionError("controller closed connection during response")

@@ -1,0 +1,415 @@
+{
+  "schema_version": 1,
+  "name": "SHERRY SINGH — LG VRF site",
+  "notes": "12 room names transcribed from supplied LG screenshots. Only OFFICE address 07 is verified. Unknown addresses are null, never inferred from group order. Import preserves the installed MQTT settings and stable site ID by default, and locks TX/writes.",
+  "configuration": {
+    "schema_version": 1,
+    "instance_id": "site",
+    "tx_enabled": false,
+    "allow_writes": false,
+    "mqtt": {
+      "enabled": false
+    },
+    "gateways": [
+      {
+        "id": "gateway_1",
+        "name": "LG AC Smart 5 — SHERRY SINGH",
+        "transport": "tcp",
+        "host": "192.168.29.136",
+        "port": 502,
+        "timeout": 3,
+        "connect_delay": 0.1,
+        "request_delay": 0.3,
+        "poll_interval": 30,
+        "polling_enabled": true,
+        "fresh_connection": true
+      }
+    ],
+    "units": [
+      {
+        "id": "arya_bedroom",
+        "name": "ARYA BEDROOM",
+        "group": "FIRST FLOOR",
+        "gateway": "gateway_1",
+        "slave_id": 10,
+        "address": null,
+        "profile": "lg-ac-smart5-18c",
+        "enabled": true,
+        "control_enabled": false,
+        "notes": "Address unknown. Select this room on the LG UI → Info → Address; enter it before polling or control."
+      },
+      {
+        "id": "guest_bedroom",
+        "name": "GUEST BEDROOM",
+        "group": "FIRST FLOOR",
+        "gateway": "gateway_1",
+        "slave_id": 10,
+        "address": null,
+        "profile": "lg-ac-smart5-18c",
+        "enabled": true,
+        "control_enabled": false,
+        "notes": "Address unknown. Select this room on the LG UI → Info → Address; enter it before polling or control."
+      },
+      {
+        "id": "master_bedroom",
+        "name": "MASTER BEDROOM",
+        "group": "FIRST FLOOR",
+        "gateway": "gateway_1",
+        "slave_id": 10,
+        "address": null,
+        "profile": "lg-ac-smart5-18c",
+        "enabled": true,
+        "control_enabled": false,
+        "notes": "Address unknown. Select this room on the LG UI → Info → Address; enter it before polling or control."
+      },
+      {
+        "id": "master_dressing",
+        "name": "MASTER DRESSING",
+        "group": "FIRST FLOOR",
+        "gateway": "gateway_1",
+        "slave_id": 10,
+        "address": null,
+        "profile": "lg-ac-smart5-18c",
+        "enabled": true,
+        "control_enabled": false,
+        "notes": "Address unknown. Select this room on the LG UI → Info → Address; enter it before polling or control."
+      },
+      {
+        "id": "media_lounge",
+        "name": "MEDIA LOUNGE",
+        "group": "FIRST FLOOR",
+        "gateway": "gateway_1",
+        "slave_id": 10,
+        "address": null,
+        "profile": "lg-ac-smart5-18c",
+        "enabled": true,
+        "control_enabled": false,
+        "notes": "Address unknown. Select this room on the LG UI → Info → Address; enter it before polling or control."
+      },
+      {
+        "id": "spa",
+        "name": "SPA",
+        "group": "FIRST FLOOR",
+        "gateway": "gateway_1",
+        "slave_id": 10,
+        "address": null,
+        "profile": "lg-ac-smart5-18c",
+        "enabled": true,
+        "control_enabled": false,
+        "notes": "Address unknown. Select this room on the LG UI → Info → Address; enter it before polling or control."
+      },
+      {
+        "id": "chill_lounge",
+        "name": "CHILL LOUNGE",
+        "group": "GROUND FLOOR",
+        "gateway": "gateway_1",
+        "slave_id": 10,
+        "address": null,
+        "profile": "lg-ac-smart5-18c",
+        "enabled": true,
+        "control_enabled": false,
+        "notes": "Address unknown. Select this room on the LG UI → Info → Address; enter it before polling or control."
+      },
+      {
+        "id": "dining_room",
+        "name": "DINING ROOM",
+        "group": "GROUND FLOOR",
+        "gateway": "gateway_1",
+        "slave_id": 10,
+        "address": null,
+        "profile": "lg-ac-smart5-18c",
+        "enabled": true,
+        "control_enabled": false,
+        "notes": "Address unknown. Select this room on the LG UI → Info → Address; enter it before polling or control."
+      },
+      {
+        "id": "entertainment_lounge",
+        "name": "ENTERTAINMENT LOUNGE",
+        "group": "GROUND FLOOR",
+        "gateway": "gateway_1",
+        "slave_id": 10,
+        "address": null,
+        "profile": "lg-ac-smart5-18c",
+        "enabled": true,
+        "control_enabled": false,
+        "notes": "Address unknown. Select this room on the LG UI → Info → Address; enter it before polling or control."
+      },
+      {
+        "id": "kitchen",
+        "name": "KITCHEN",
+        "group": "GROUND FLOOR",
+        "gateway": "gateway_1",
+        "slave_id": 10,
+        "address": null,
+        "profile": "lg-ac-smart5-18c",
+        "enabled": true,
+        "control_enabled": false,
+        "notes": "Address unknown. Select this room on the LG UI → Info → Address; enter it before polling or control."
+      },
+      {
+        "id": "gym",
+        "name": "GYM",
+        "group": "GYM",
+        "gateway": "gateway_1",
+        "slave_id": 10,
+        "address": null,
+        "profile": "lg-ac-smart5-18c",
+        "enabled": true,
+        "control_enabled": false,
+        "notes": "Address unknown. Select this room on the LG UI → Info → Address; enter it before polling or control."
+      },
+      {
+        "id": "office",
+        "name": "OFFICE",
+        "group": "OFFICE",
+        "gateway": "gateway_1",
+        "slave_id": 10,
+        "address": 7,
+        "profile": "lg-ac-smart5",
+        "enabled": true,
+        "control_enabled": false,
+        "notes": "Indoor address 07 verified from LG Info."
+      }
+    ]
+  },
+  "profiles": [
+    {
+      "schema_version": 1,
+      "id": "lg-ac-smart5",
+      "version": "1.0.0",
+      "name": "LG AC Smart 5 — indoor units",
+      "manufacturer": "LG",
+      "model": "AC Smart 5 Modbus TCP indoor unit",
+      "source": "https://media.us.lg.com/m/43e89bd22e3cc035/original/OM_AC_Smart5_PACS5A000-pdf.pdf",
+      "notes": "Protocol address = indoor address × 16 + point number − 1. Unit ID is Vnet number. OFFICE address 07, Unit ID 10: power writes acknowledged; mode read 1; fan write/read 3; setpoint read 22; room temperature read 26 on 2026-10-01. Fractional temperature precision is unverified. Verify controller model, firmware and supported points before enabling control. The UI's 26.5°C may differ from this integer register.",
+      "base_address": 0,
+      "address_stride": 16,
+      "points": [
+        {
+          "id": "power",
+          "name": "Power",
+          "entity": "switch",
+          "role": "power",
+          "offset": 0,
+          "read_function": 1,
+          "write_function": 5,
+          "commands": {
+            "OFF": 0,
+            "ON": 65280
+          },
+          "states": {
+            "0": "OFF",
+            "1": "ON"
+          }
+        },
+        {
+          "id": "mode",
+          "name": "Mode",
+          "entity": "select",
+          "role": "mode",
+          "offset": 0,
+          "read_function": 3,
+          "write_function": 6,
+          "commands": {
+            "cool": 1,
+            "dry": 2,
+            "fan_only": 3,
+            "auto": 4,
+            "heat": 5
+          },
+          "states": {
+            "1": "cool",
+            "2": "dry",
+            "3": "fan_only",
+            "4": "auto",
+            "5": "heat"
+          }
+        },
+        {
+          "id": "fan",
+          "name": "Fan speed",
+          "entity": "select",
+          "role": "fan",
+          "offset": 1,
+          "read_function": 3,
+          "write_function": 6,
+          "commands": {
+            "low": 1,
+            "medium": 2,
+            "high": 3,
+            "auto": 4
+          },
+          "states": {
+            "1": "low",
+            "2": "medium",
+            "3": "high",
+            "4": "auto"
+          }
+        },
+        {
+          "id": "target",
+          "name": "Setpoint",
+          "entity": "number",
+          "role": "target",
+          "offset": 2,
+          "read_function": 3,
+          "write_function": 6,
+          "unit": "°C",
+          "minimum": 16,
+          "maximum": 30,
+          "step": 1,
+          "notes": "Whole Celsius values: raw 22 matched UI 22.0°C. Fractional writes are deliberately unavailable."
+        },
+        {
+          "id": "current",
+          "name": "Room temperature",
+          "entity": "sensor",
+          "role": "current",
+          "offset": 5,
+          "read_function": 3,
+          "unit": "°C",
+          "notes": "Read-only. Preserve integer source value; no invented fractional precision."
+        },
+        {
+          "id": "alarm",
+          "name": "Alarm",
+          "entity": "sensor",
+          "offset": 6,
+          "read_function": 1,
+          "optional": true,
+          "states": {
+            "0": "normal",
+            "1": "alarm"
+          }
+        },
+        {
+          "id": "error_code",
+          "name": "Error code",
+          "entity": "sensor",
+          "offset": 6,
+          "read_function": 3,
+          "optional": true
+        }
+      ]
+    },
+    {
+      "schema_version": 1,
+      "id": "lg-ac-smart5-18c",
+      "version": "1.0.0",
+      "name": "LG AC Smart 5 — 18–30°C room range",
+      "manufacturer": "LG",
+      "model": "AC Smart 5 Modbus TCP indoor unit",
+      "source": "https://media.us.lg.com/m/43e89bd22e3cc035/original/OM_AC_Smart5_PACS5A000-pdf.pdf",
+      "notes": "Derived from the documented LG profile; the supplied room UI shows a setpoint range of 18–30°C. Indoor addresses are unassigned until verified.",
+      "base_address": 0,
+      "address_stride": 16,
+      "points": [
+        {
+          "id": "power",
+          "name": "Power",
+          "entity": "switch",
+          "role": "power",
+          "offset": 0,
+          "read_function": 1,
+          "write_function": 5,
+          "commands": {
+            "OFF": 0,
+            "ON": 65280
+          },
+          "states": {
+            "0": "OFF",
+            "1": "ON"
+          }
+        },
+        {
+          "id": "mode",
+          "name": "Mode",
+          "entity": "select",
+          "role": "mode",
+          "offset": 0,
+          "read_function": 3,
+          "write_function": 6,
+          "commands": {
+            "cool": 1,
+            "dry": 2,
+            "fan_only": 3,
+            "auto": 4,
+            "heat": 5
+          },
+          "states": {
+            "1": "cool",
+            "2": "dry",
+            "3": "fan_only",
+            "4": "auto",
+            "5": "heat"
+          }
+        },
+        {
+          "id": "fan",
+          "name": "Fan speed",
+          "entity": "select",
+          "role": "fan",
+          "offset": 1,
+          "read_function": 3,
+          "write_function": 6,
+          "commands": {
+            "low": 1,
+            "medium": 2,
+            "high": 3,
+            "auto": 4
+          },
+          "states": {
+            "1": "low",
+            "2": "medium",
+            "3": "high",
+            "4": "auto"
+          }
+        },
+        {
+          "id": "target",
+          "name": "Setpoint",
+          "entity": "number",
+          "role": "target",
+          "offset": 2,
+          "read_function": 3,
+          "write_function": 6,
+          "unit": "°C",
+          "minimum": 18,
+          "maximum": 30,
+          "step": 1,
+          "notes": "Whole Celsius values: raw 22 matched UI 22.0°C. Fractional writes are deliberately unavailable."
+        },
+        {
+          "id": "current",
+          "name": "Room temperature",
+          "entity": "sensor",
+          "role": "current",
+          "offset": 5,
+          "read_function": 3,
+          "unit": "°C",
+          "notes": "Read-only. Preserve integer source value; no invented fractional precision."
+        },
+        {
+          "id": "alarm",
+          "name": "Alarm",
+          "entity": "sensor",
+          "offset": 6,
+          "read_function": 1,
+          "optional": true,
+          "states": {
+            "0": "normal",
+            "1": "alarm"
+          }
+        },
+        {
+          "id": "error_code",
+          "name": "Error code",
+          "entity": "sensor",
+          "offset": 6,
+          "read_function": 3,
+          "optional": true
+        }
+      ]
+    }
+  ]
+}

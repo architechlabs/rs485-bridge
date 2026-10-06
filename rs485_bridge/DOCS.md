@@ -16,6 +16,14 @@ On the MQTT page the UI shows whether discovery is connected. If broker discover
 
 ## Connections
 
+### Read-only setup and site imports (0.3.0)
+
+MQTT entity creation does not mean the controller has been read. **TX locked** blocks polls and manual reads. Use Connections → **Test connection** to measure transport reachability from the add-on host without a Modbus payload. Then **Start read-only monitoring** and confirm; this enables polling/TX and disables global HVAC writes.
+
+Settings → **Load SHERRY SINGH site** preloads the 12 rooms shown in the supplied LG UI. **Import JSON** also accepts the supplied site bundle, a configuration-only object or a profile. The importer validates all items before applying them, preserves working MQTT credentials and the stable site ID by default, and locks TX/writes. Unassigned indoor addresses are `null`; they remain visible and discoverable but cannot poll or write. Assign each actual LG **Info → Address** under Edit. Only OFFICE address 07 is verified in the preset.
+
+Unit cards expose every profile point and its last error/function/protocol address. Individual MQTT entities use point availability; climate availability requires all required points. These diagnostics distinguish unassigned, locked, waiting, partial data and failed reads. Increase TCP connect delay if a controller needs settling time after each fresh connection. Each response has a total timeout deadline, including fragmented replies.
+
 - **TCP:** supply controller IP, Modbus TCP port (typically 502), timeout and request delay. BACnet/IP's UDP port 47808 is a separate protocol. Prefer fresh connections for this LG controller; the service closes after each exchange. Read transport failures get at most one retry on a new connection. Write failures never get automatic retries.
 - **USB/RTU:** attach the adapter to the bridge host and choose its detected device. The list shows chipset/USB hints, not proof that the electrical interface is RS485. Use a stable Linux by-ID path where available. Supply baud, data bits, parity, stop bits and timing from the gateway documentation. CH340/COM7 was observed on the Windows laptop; COM7 is not hardcoded and will not exist on a Linux HA host.
 - **Passive capture:** serial only, with polling disabled. No bytes are transmitted, regardless of global control settings. Raw chunks are stored immediately and silence-framed analysis is stored as a separate event kind. USB buffering prevents exact on-wire byte timing.
@@ -36,7 +44,7 @@ Fresh installations default to **TX locked**, global writes disabled and unit co
 
 Active polling also transmits requests. Enable it per gateway and unlock TX globally. Default polling is 15 seconds and each transaction is separated by at least 250 ms. Poll intervals cannot be below 5 seconds. Failure polling backs off; command queues are bounded and expire rather than sending old commands after a long outage.
 
-When verified, enable global writes and per-unit control. UI controls ask for a write confirmation; Home Assistant automations use the authorized policy without an interactive prompt. MQTT retained/duplicate commands are rejected and clean sessions prevent queued commands from being replayed on reconnect.
+When verified, enable global writes and per-unit control. UI controls ask for a write confirmation; Home Assistant automations use the authorized policy without an interactive prompt. Stored retained-command deliveries and DUP deliveries are rejected; clean sessions prevent queued commands from being replayed on reconnect. MQTT 3.1.1 can forward a newly published retained command as an ordinary live delivery, so the bridge cannot identify its publisher's retain flag in that case. Always publish controls with retain disabled; the discovery configuration does so. See [MQTT 3.1.1 §3.3.1.3](https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html) for retain semantics.
 
 ## This LG site
 

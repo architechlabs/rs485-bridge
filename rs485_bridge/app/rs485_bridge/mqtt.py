@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 import paho.mqtt.client as mqtt
 from .schema import atomic_json
+from . import __version__
 
 LOG = logging.getLogger(__name__)
 
@@ -21,11 +22,12 @@ def discovery_records(config, profiles):
         shared = {
             "device": {"identifiers":[device_id], "name":unit.name, "manufacturer":profile.manufacturer, "model":profile.model},
             "availability": [{"topic":f"{prefix}/availability"}, {"topic":f"{base}/availability"}],
-            "availability_mode":"all", "origin":{"name":"RS485 Bridge", "sw_version":"0.2.0"},
+            "availability_mode":"all", "origin":{"name":"RS485 Bridge", "sw_version":__version__},
         }
         for point in profile.points:
             component = point.entity
             body = {**shared, "name":point.name, "unique_id":f"{device_id}_{point.id}"}
+            body['availability']=[{'topic':f'{prefix}/availability'}, {'topic':f'{base}/point/{point.id}/availability'}]
             if component != "button":
                 body.update(state_topic=f"{base}/state", value_template="{{ value_json." + point.id + " | default('') }}")
             if point.write_function:
@@ -157,6 +159,11 @@ class MQTTBridge:
             return
         base = f"{self.runtime.config.mqtt.topic_prefix}/{self.runtime.config.instance_id}/{unit_id}"
         self.client.publish(f"{base}/availability", "online" if state.get("available") else "offline", qos=1, retain=True)
+        unit=next((u for u in self.runtime.config.units if u.id==unit_id),None)
+        if unit:
+            for point in self.runtime.profiles[unit.profile].points:
+                available=state.get('point_availability',{}).get(point.id,False)
+                self.client.publish(f'{base}/point/{point.id}/availability','online' if available else 'offline',qos=1,retain=True)
         if state.get("values"):
             self.client.publish(f"{base}/state", json.dumps(state["values"], ensure_ascii=False), qos=1, retain=True)
 

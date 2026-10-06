@@ -12,7 +12,7 @@ from pathlib import Path
 from aiohttp import web, ClientSession, ClientTimeout, ClientError
 from rs485_tool.device_detection import detect_devices
 from .runtime import Runtime
-from .schema import BridgeConfig, Gateway, Unit, Profile, atomic_json
+from .schema import BridgeConfig, Gateway, Unit, Profile, SiteBundle, atomic_json
 
 LOG = logging.getLogger(__name__)
 MAX_UPLOAD = 1024 * 1024
@@ -128,11 +128,48 @@ def create_app(runtime: Runtime, token: str, ingress=False):
         result = await runtime.command(body["unit"], body["point"], body["value"])
         return web.json_response(result)
 
+    async def site_import(request):
+        async with mutation_lock:
+            body=await request.json()
+            if body.get('revision')!=revision(runtime.config.model_dump()):
+                return web.json_response({'error':'Settings changed. Reload before importing.'},status=409)
+            bundle=SiteBundle.model_validate(body['bundle'])
+            return web.json_response(await runtime.import_bundle(bundle,
+                preserve_mqtt=body.get('preserve_mqtt',True) is not False,
+                preserve_instance_id=body.get('preserve_instance_id',True) is not False))
+
+    async def site_presets(request):
+        folder=Path(__file__).parents[2]/'sites'
+        return web.json_response([json.loads(path.read_text(encoding='utf-8')) for path in sorted(folder.glob('*.json'))])
+
+    async def start_monitoring(request):
+        async with mutation_lock:
+            body=await request.json()
+            if body.get('confirmation')!='ENABLE_READ_MONITORING':
+                raise PermissionError('Explicit read-only monitoring confirmation is required; reads transmit requests')
+            if body.get('revision')!=revision(runtime.config.model_dump()):
+                return web.json_response({'error':'Settings changed. Reload first.'},status=409)
+            updated=runtime.config.model_copy(deep=True)
+            gateway=next((g for g in updated.gateways if g.id==body.get('gateway')),None)
+            if not gateway:
+                raise ValueError('gateway not found')
+            if gateway.passive:
+                raise PermissionError('Passive capture cannot poll')
+            if not any(u.gateway==gateway.id and u.enabled and u.address is not None for u in updated.units):
+                raise ValueError('Assign and enable at least one unit before starting monitoring')
+            gateway.polling_enabled=True
+            updated.tx_enabled=True
+            updated.allow_writes=False
+            await runtime.configure(updated)
+            return web.json_response({'monitoring':True,'allow_writes':False})
+
     async def action(request):
         body = await request.json()
         worker = runtime.workers.get(body.get("gateway"))
         if not worker:
             raise ValueError("gateway not found")
+        if request.match_info['action']=='test':
+            return web.json_response(await runtime.check_connection(worker.gateway.id))
         if request.match_info["action"] == "poll":
             if not runtime.config.tx_enabled or worker.gateway.passive:
                 raise PermissionError("TX locked or passive mode; reads also transmit requests")
@@ -195,7 +232,10 @@ def create_app(runtime: Runtime, token: str, ingress=False):
     app.router.add_post("/api/profiles", profiles)
     app.router.add_get("/api/serial", serial_devices)
     app.router.add_post("/api/command", command)
-    app.router.add_post("/api/gateway/{action:poll|reconnect}", action)
+    app.router.add_post("/api/import", site_import)
+    app.router.add_get("/api/sites", site_presets)
+    app.router.add_post("/api/monitor", start_monitoring)
+    app.router.add_post("/api/gateway/{action:poll|reconnect|test}", action)
     app.router.add_get("/api/events", events)
     app.router.add_get("/api/export", export)
     app.router.add_get("/api/bundle", bundle)

@@ -40,7 +40,7 @@ For a local installation, copy just `rs485_bridge/` to the Home Assistant host's
 
 Run `python scripts/release-addon.py` from the parent engineering project. It creates:
 
-- `dist/rs485-control-studio-addon-0.2.0.zip`: the app folder for local installation.
-- `dist/rs485-control-studio-repository-0.2.0.zip`: metadata at the archive root plus the app folder, ready to publish as a Git repository.
+- `dist/rs485-control-studio-addon-0.3.0.zip`: the app folder for local installation.
+- `dist/rs485-control-studio-repository-0.3.0.zip`: metadata at the archive root plus the app folder, ready to publish as a Git repository.
 
 Archives exclude Git history, Python caches and runtime credentials/data. Extract the repository archive and upload its contents directly to the repository root.
